@@ -1,0 +1,207 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  INSTRUCTOR
+}
+
+enum SubscriptionTier {
+  MEMBER
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  SHORT_ANSWER
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED_VIOLATION
+  AUTO_SUBMITTED_TIMEOUT
+  AUTO_SUBMITTED_NETWORK
+}
+
+enum ViolationType {
+  TAB_SWITCH
+  FULLSCREEN_EXIT
+  CAMERA_BLOCKED
+  WINDOW_BLUR
+  UNAUTHORIZED_DEVICE
+}
+
+model User {
+  id              String            @id @default(uuid())
+  email           String            @unique
+  passwordHash    String
+  name            String
+  role            Role              @default(INSTRUCTOR)
+  institution     String
+  department      String
+  subscription    Subscription?
+  courses         Course[]
+  auditActions    AuditLog[]        @relation("ActorAuditLogs")
+  notifications   Notification[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([email])
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier             SubscriptionTier   @default(MEMBER)
+  status           SubscriptionStatus @default(TRIAL)
+  maxStudents      Int                @default(50)
+  maxExamsPerMonth Int                @default(5)
+  storageLimitMb   Int                @default(250)
+  currentExamCount Int                @default(0)
+  expiresAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  code         String   // e.g., "FIN301"
+  title        String   // e.g., "Financial Institutions & Markets"
+  instructorId String
+  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  exams        Exam[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([instructorId])
+}
+
+model Exam {
+  id                 String           @id @default(uuid())
+  courseId           String
+  course             Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title              String
+  accessCode         String           @unique // e.g., "MKT-2026-X1"
+  durationMinutes    Int
+  passMarkPercentage Float            @default(50.0)
+  randomizeQuestions Boolean          @default(false)
+  randomizeOptions   Boolean          @default(false)
+  maxTabSwitches     Int              @default(3)
+  requireCamera      Boolean          @default(true)
+  isPublished        Boolean          @default(false)
+  questions          Question[]
+  attempts           StudentAttempt[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([accessCode])
+  @@index([courseId])
+}
+
+model Question {
+  id             String          @id @default(uuid())
+  examId         String
+  exam           Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  orderIndex     Int
+  prompt         String          @db.Text
+  type           QuestionType    @default(SINGLE_CHOICE)
+  options        Json?           // Array of string options or objects [{ id: "A", text: "..." }]
+  correctAnswers Json            // Array of valid values e.g. ["B"] or ["Federal", "State"]
+  points         Float           @default(1.0)
+  answers        StudentAnswer[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([examId, orderIndex])
+}
+
+model StudentAttempt {
+  id             String          @id @default(uuid())
+  examId         String
+  exam           Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId      String          // Student Matric / Reg No
+  studentName    String
+  startedAt      DateTime        @default(now())
+  submittedAt    DateTime?
+  status         AttemptStatus   @default(IN_PROGRESS)
+  tabSwitchCount Int             @default(0)
+  score          Float?
+  totalPoints    Float?
+  percentage     Float?
+  answers        StudentAnswer[]
+  violations     ViolationLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([examId, studentId])
+  @@index([examId, status])
+  @@index([studentId])
+}
+
+model StudentAnswer {
+  id             String         @id @default(uuid())
+  attemptId      String
+  attempt        StudentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedAnswer Json           // Stored answer e.g. ["B"] or "Text answer"
+  isCorrect      Boolean?
+  pointsAwarded  Float?         @default(0.0)
+  savedAt        DateTime       @default(now())
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model ViolationLog {
+  id        String         @id @default(uuid())
+  attemptId String
+  attempt   StudentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  type      ViolationType
+  details   String?
+  timestamp DateTime       @default(now())
+
+  @@index([attemptId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  actor     User     @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: Cascade)
+  action    String   // e.g., "SUPER_ADMIN_OVERRIDE_SCORE", "TEST_DELETED"
+  targetId  String?  // ID of affected entity (e.g., attemptId)
+  metadata  Json?    // Detailed diff: { previousScore: 40, updatedScore: 55, reason: "Remark" }
+  timestamp DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String   @db.Text
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
