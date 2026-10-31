@@ -84,9 +84,9 @@ function initializeSeedData(): MockDatabaseState {
       userId: instructor1Id,
       tier: 'PRO',
       status: 'ACTIVE',
-      maxStudents: 300,
-      maxExamsPerMonth: 25,
-      storageLimitMb: 1000,
+      maxStudents: 500,
+      maxExamsPerMonth: 10,
+      storageLimitMb: 2000,
       currentExamCount: 3,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date('2026-01-10'),
@@ -97,8 +97,8 @@ function initializeSeedData(): MockDatabaseState {
       tier: 'PREMIUM',
       status: 'ACTIVE',
       maxStudents: 1000,
-      maxExamsPerMonth: 100,
-      storageLimitMb: 5000,
+      maxExamsPerMonth: -1, // Unlimited tests
+      storageLimitMb: 10000,
       currentExamCount: 5,
       createdAt: new Date('2026-01-15'),
       updatedAt: new Date('2026-01-15'),
@@ -571,9 +571,9 @@ export const dbService = {
             userId: user.id,
             tier: data.tier || 'MEMBER',
             status: 'ACTIVE',
-            maxStudents: data.tier === 'PREMIUM' ? 1000 : data.tier === 'PRO' ? 300 : 50,
-            maxExamsPerMonth: data.tier === 'PREMIUM' ? 100 : data.tier === 'PRO' ? 25 : 5,
-            storageLimitMb: data.tier === 'PREMIUM' ? 5000 : data.tier === 'PRO' ? 1000 : 250,
+            maxStudents: data.tier === 'PREMIUM' ? 1000 : data.tier === 'PRO' ? 500 : 200,
+            maxExamsPerMonth: data.tier === 'PREMIUM' ? -1 : data.tier === 'PRO' ? 10 : 5,
+            storageLimitMb: data.tier === 'PREMIUM' ? 10000 : data.tier === 'PRO' ? 2000 : 500,
           },
         });
 
@@ -603,9 +603,9 @@ export const dbService = {
       userId: newUser.id,
       tier: data.tier || 'MEMBER',
       status: 'ACTIVE',
-      maxStudents: data.tier === 'PREMIUM' ? 1000 : data.tier === 'PRO' ? 300 : 50,
-      maxExamsPerMonth: data.tier === 'PREMIUM' ? 100 : data.tier === 'PRO' ? 25 : 5,
-      storageLimitMb: data.tier === 'PREMIUM' ? 5000 : data.tier === 'PRO' ? 1000 : 250,
+      maxStudents: data.tier === 'PREMIUM' ? 1000 : data.tier === 'PRO' ? 500 : 200,
+      maxExamsPerMonth: data.tier === 'PREMIUM' ? -1 : data.tier === 'PRO' ? 10 : 5,
+      storageLimitMb: data.tier === 'PREMIUM' ? 10000 : data.tier === 'PRO' ? 2000 : 500,
       currentExamCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -751,6 +751,113 @@ export const dbService = {
       userId: instructorId,
       title: 'Account Quota Updated by Super Admin',
       message: `Your subscription tier was set to ${params.tier} (${params.status}). Active candidate quota: ${params.maxStudents}, Exams limit: ${params.maxExamsPerMonth}/month.`,
+      read: false,
+      createdAt: new Date(),
+    });
+
+    return sub;
+  },
+
+  async upgradeSubscription(
+    userId: string,
+    tier: SubscriptionTier,
+    durationMonths: number = 1,
+    paymentRef?: string
+  ): Promise<Subscription> {
+    const isPg = await testPrismaConnection();
+    const maxStudents = tier === 'PREMIUM' ? 1000 : tier === 'PRO' ? 500 : 200;
+    const maxExamsPerMonth = tier === 'PREMIUM' ? -1 : tier === 'PRO' ? 10 : 5;
+    const storageLimitMb = tier === 'PREMIUM' ? 10000 : tier === 'PRO' ? 2000 : 500;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationMonths * 30);
+
+    if (isPg) {
+      return await prisma.$transaction(async (tx) => {
+        const updated = await tx.subscription.upsert({
+          where: { userId },
+          update: {
+            tier,
+            status: 'ACTIVE',
+            maxStudents,
+            maxExamsPerMonth,
+            storageLimitMb,
+            expiresAt,
+          },
+          create: {
+            userId,
+            tier,
+            status: 'ACTIVE',
+            maxStudents,
+            maxExamsPerMonth,
+            storageLimitMb,
+            expiresAt,
+          },
+        });
+
+        // Audit log
+        await tx.auditLog.create({
+          data: {
+            actorId: userId,
+            action: 'SUBSCRIPTION_UPGRADE',
+            targetId: updated.id,
+            metadata: { tier, durationMonths, paymentRef: paymentRef || `PAY-${Date.now()}` },
+          },
+        });
+
+        // Notification
+        await tx.notification.create({
+          data: {
+            userId,
+            title: `Plan Upgraded to ${tier}`,
+            message: `Your account has been upgraded to ${tier} with ${maxStudents} student capacity and ${maxExamsPerMonth === -1 ? 'unlimited' : maxExamsPerMonth} monthly tests.`,
+          },
+        });
+
+        return updated as any;
+      });
+    }
+
+    const store = getMockStore();
+    let sub = store.subscriptions.find((s) => s.userId === userId);
+    if (!sub) {
+      sub = {
+        id: `sub-${Date.now()}`,
+        userId,
+        tier,
+        status: 'ACTIVE',
+        maxStudents,
+        maxExamsPerMonth,
+        storageLimitMb,
+        currentExamCount: 0,
+        expiresAt,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      store.subscriptions.push(sub);
+    } else {
+      sub.tier = tier;
+      sub.status = 'ACTIVE';
+      sub.maxStudents = maxStudents;
+      sub.maxExamsPerMonth = maxExamsPerMonth;
+      sub.storageLimitMb = storageLimitMb;
+      sub.expiresAt = expiresAt;
+      sub.updatedAt = new Date();
+    }
+
+    store.auditLogs.push({
+      id: `aud-${Date.now()}`,
+      actorId: userId,
+      action: 'SUBSCRIPTION_UPGRADE',
+      targetId: sub.id,
+      metadata: { tier, durationMonths, paymentRef: paymentRef || `PAY-${Date.now()}` },
+      timestamp: new Date(),
+    });
+
+    store.notifications.push({
+      id: `notif-${Date.now()}`,
+      userId,
+      title: `Plan Upgraded to ${tier}`,
+      message: `Your account has been successfully upgraded to ${tier} (${maxStudents} students, ${maxExamsPerMonth === -1 ? 'Unlimited' : maxExamsPerMonth} exams/mo). Ref: ${paymentRef || 'SIM-PAY'}`,
       read: false,
       createdAt: new Date(),
     });

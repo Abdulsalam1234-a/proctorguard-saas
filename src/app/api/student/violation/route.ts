@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       violationId: log.id,
+      violationType: log.type,
       tabSwitchCount: attempt.tabSwitchCount,
       maxAllowed,
       breached,

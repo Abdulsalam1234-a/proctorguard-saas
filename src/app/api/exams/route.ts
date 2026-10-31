@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     if (sub && sub.maxExamsPerMonth > 0 && sub.currentExamCount >= sub.maxExamsPerMonth) {
       return NextResponse.json(
         {
-          error: `Monthly quota reached: Your ${sub.tier} plan allows a maximum of ${sub.maxExamsPerMonth} tests per month. Please contact your Super Admin to upgrade.`,
+          error: `Monthly quota reached: Your ${sub.tier} plan allows a maximum of ${sub.maxExamsPerMonth} tests per month. Please upgrade to Pro (10 tests) or Premium (Unlimited tests) to continue.`,
+          quotaExceeded: true,
+          currentPlan: sub.tier,
+          maxExams: sub.maxExamsPerMonth,
         },
         { status: 403 }
       );

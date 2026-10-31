@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: proctorguard-saas
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: proctorguard-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 3000
+
+databases:
+  - name: proctorguard-db
+    plan: free
+    region: frankfurt
+    databaseName: proctorguard
+    user: pgadmin

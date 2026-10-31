@@ -257,18 +257,32 @@ export default function RealTimeMonitorPage({ params }: { params: { id: string }
                       <span>Total Violations: <strong>{att.violations?.length || 0}</strong></span>
                     </div>
 
-                    {/* Violations Preview if any */}
+                    {/* Violations & AI Vision Infractions Preview */}
                     {att.violations && att.violations.length > 0 && (
                       <div className="pt-1 flex flex-wrap gap-1.5">
-                        {att.violations.slice(-3).map((v: any, vIdx: number) => (
-                          <span
-                            key={vIdx}
-                            className="text-[10px] bg-rose-50 border border-rose-200 text-rose-800 px-2 py-0.5 rounded-md flex items-center space-x-1"
-                          >
-                            <AlertTriangle className="w-3 h-3 text-rose-500 flex-shrink-0" />
-                            <span>{v.type}: {v.details?.substring(0, 40)}...</span>
-                          </span>
-                        ))}
+                        {att.violations.slice(-4).map((v: any, vIdx: number) => {
+                          const isLookingAway = v.type === 'LOOKING_AWAY';
+                          const isNoFace = v.type === 'NO_FACE_DETECTED';
+                          const isMultiFace = v.type === 'MULTIPLE_FACES';
+                          return (
+                            <span
+                              key={vIdx}
+                              className={`text-[10px] px-2 py-0.5 rounded-md flex items-center space-x-1 border ${
+                                isLookingAway || isMultiFace
+                                  ? 'bg-rose-100 border-rose-300 text-rose-900 font-bold animate-pulse'
+                                  : isNoFace
+                                  ? 'bg-amber-100 border-amber-300 text-amber-900 font-medium'
+                                  : 'bg-rose-50 border-rose-200 text-rose-800'
+                              }`}
+                            >
+                              <AlertTriangle className="w-3 h-3 text-rose-600 flex-shrink-0" />
+                              <span>
+                                {isLookingAway ? 'AI Gaze Averted' : isNoFace ? 'No Face in Camera' : isMultiFace ? 'Multiple Faces' : v.type}
+                                {v.details ? `: ${v.details.substring(0, 32)}` : ''}
+                              </span>
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

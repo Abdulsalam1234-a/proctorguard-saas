@@ -42,9 +42,9 @@ async function main() {
         create: {
           tier: 'PRO',
           status: 'ACTIVE',
-          maxStudents: 300,
-          maxExamsPerMonth: 25,
-          storageLimitMb: 1000,
+          maxStudents: 500,
+          maxExamsPerMonth: 10,
+          storageLimitMb: 2000,
         },
       },
     },
@@ -66,8 +66,8 @@ async function main() {
           tier: 'PREMIUM',
           status: 'ACTIVE',
           maxStudents: 1000,
-          maxExamsPerMonth: 100,
-          storageLimitMb: 5000,
+          maxExamsPerMonth: -1, // Unlimited tests
+          storageLimitMb: 10000,
         },
       },
     },

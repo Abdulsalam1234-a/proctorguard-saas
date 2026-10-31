@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Shield, Bell, LogOut, User, CheckCircle2, Building, ChevronDown } from 'lucide-react';
+import { Shield, Bell, LogOut, User, CheckCircle2, Building, ChevronDown, Sparkles } from 'lucide-react';
 import { Badge } from './Badge';
 
 interface NavbarProps {
@@ -121,6 +121,15 @@ export function Navbar({ user: initialUser }: NavbarProps) {
 
               {/* User Profile Capsule */}
               <div className="flex items-center space-x-3 pl-2 border-l border-slate-200">
+                {user.role !== 'SUPER_ADMIN' && (
+                  <Link
+                    href="/instructor/billing"
+                    className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Upgrade</span>
+                  </Link>
+                )}
                 <div className="text-right hidden sm:block">
                   <div className="font-semibold text-sm text-slate-900 leading-tight">{user.name}</div>
                   <div className="flex items-center justify-end space-x-1.5 mt-0.5">

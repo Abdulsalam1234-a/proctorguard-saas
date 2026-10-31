@@ -18,7 +18,33 @@ export type ViolationType =
   | 'FULLSCREEN_EXIT'
   | 'CAMERA_BLOCKED'
   | 'WINDOW_BLUR'
-  | 'UNAUTHORIZED_DEVICE';
+  | 'UNAUTHORIZED_DEVICE'
+  | 'LOOKING_AWAY'
+  | 'NO_FACE_DETECTED'
+  | 'MULTIPLE_FACES'
+  | 'ERRATIC_MOTION';
+
+export interface PlanFeature {
+  text: string;
+  included: boolean;
+}
+
+export interface PricingPlan {
+  id: SubscriptionTier;
+  tier?: SubscriptionTier;
+  name: string;
+  tagline: string;
+  badge?: string;
+  popular?: boolean;
+  priceMonthlyNgn: number;
+  priceAnnualNgn: number;
+  priceMonthlyUsd: number;
+  priceAnnualUsd: number;
+  maxStudents: number;
+  maxExamsPerMonth: number; // -1 for unlimited
+  storageLimitMb: number;
+  features: string[];
+}
 
 export interface User {
   id: string;

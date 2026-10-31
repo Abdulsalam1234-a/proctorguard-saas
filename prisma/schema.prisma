@@ -45,6 +45,10 @@ enum ViolationType {
   CAMERA_BLOCKED
   WINDOW_BLUR
   UNAUTHORIZED_DEVICE
+  LOOKING_AWAY
+  NO_FACE_DETECTED
+  MULTIPLE_FACES
+  ERRATIC_MOTION
 }
 
 model User {
@@ -71,9 +75,9 @@ model Subscription {
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   tier             SubscriptionTier   @default(MEMBER)
   status           SubscriptionStatus @default(TRIAL)
-  maxStudents      Int                @default(50)
+  maxStudents      Int                @default(200)
   maxExamsPerMonth Int                @default(5)
-  storageLimitMb   Int                @default(250)
+  storageLimitMb   Int                @default(500)
   currentExamCount Int                @default(0)
   expiresAt        DateTime?
   createdAt        DateTime           @default(now())

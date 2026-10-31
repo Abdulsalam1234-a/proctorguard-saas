@@ -14,6 +14,8 @@ import {
   Users,
   HardDrive,
   ShieldAlert,
+  CreditCard,
+  Sparkles,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -36,6 +38,7 @@ export function Sidebar({ role = 'INSTRUCTOR', subscription }: SidebarProps) {
     { label: 'Instructor Hub', href: '/instructor', icon: LayoutDashboard },
     { label: 'Courses', href: '/instructor/courses', icon: BookOpen },
     { label: 'Exams & CBT Tests', href: '/instructor/exams', icon: FileQuestion },
+    { label: 'Billing & Plans', href: '/instructor/billing', icon: CreditCard },
   ];
 
   const navItems = isSuperAdmin ? superAdminNav : instructorNav;
@@ -128,14 +131,14 @@ export function Sidebar({ role = 'INSTRUCTOR', subscription }: SidebarProps) {
                 <span>Monthly Tests</span>
               </span>
               <span className="font-semibold text-slate-900">
-                {subscription.currentExamCount || 2} / {subscription.maxExamsPerMonth}
+                {subscription.currentExamCount || 2} / {subscription.maxExamsPerMonth === -1 ? '∞' : subscription.maxExamsPerMonth}
               </span>
             </div>
             <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
               <div
                 className="bg-indigo-600 h-full rounded-full"
                 style={{
-                  width: `${Math.min(
+                  width: `${subscription.maxExamsPerMonth === -1 ? 25 : Math.min(
                     100,
                     ((subscription.currentExamCount || 2) / (subscription.maxExamsPerMonth || 5)) * 100
                   )}%`,
@@ -155,6 +158,17 @@ export function Sidebar({ role = 'INSTRUCTOR', subscription }: SidebarProps) {
                 {subscription.storageLimitMb} MB
               </span>
             </div>
+          </div>
+
+          {/* Upgrade Plan button */}
+          <div className="pt-2 border-t border-slate-200/60">
+            <Link
+              href="/instructor/billing"
+              className="w-full py-1.5 px-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-[11px] font-bold text-center flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+            >
+              <Sparkles className="w-3 h-3 text-amber-300" />
+              <span>Upgrade Plan Quotas</span>
+            </Link>
           </div>
         </div>
       )}

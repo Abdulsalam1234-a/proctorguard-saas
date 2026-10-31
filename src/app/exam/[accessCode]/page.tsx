@@ -22,10 +22,11 @@ import {
   Layers,
   AlertOctagon,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { NetworkConnectivityPill } from '@/components/proctoring/NetworkConnectivityPill';
-import { WebcamMirror } from '@/components/proctoring/WebcamMirror';
+import { WebcamMirror, AIAttentionStatus } from '@/components/proctoring/WebcamMirror';
 import { ViolationWarningModal } from '@/components/proctoring/ViolationWarningModal';
 import { OfflineSyncManager } from '@/lib/offline-sync';
 import { ProctoringEngine } from '@/lib/proctoring-engine';
@@ -69,6 +70,8 @@ export default function StudentExamPage({ params }: { params: { accessCode: stri
   const [isBreached, setIsBreached] = useState<boolean>(false);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [completionData, setCompletionData] = useState<any>(null);
+  const [aiAttentionStatus, setAiAttentionStatus] = useState<AIAttentionStatus>('FOCUSED');
+  const hasTriggeredChimeRef = useRef(false);
 
   // Manager refs
   const syncManagerRef = useRef<OfflineSyncManager | null>(null);
@@ -297,7 +300,41 @@ export default function StudentExamPage({ params }: { params: { accessCode: stri
   };
 
   const currentQ = questions[currentIndex];
-  const isTimeCritical = secondsRemaining <= 300; // Under 5 mins
+
+  // Dynamic critical timer threshold based on exam duration:
+  // - For longer exams (>= 30 mins): 5 minutes (300 seconds)
+  // - For shorter exams (< 30 mins): 3 minutes (180 seconds)
+  const durationMins = examData?.durationMinutes || 45;
+  const criticalThresholdSeconds =
+    durationMins >= 30
+      ? 300
+      : Math.min(180, Math.floor(durationMins * 60 * 0.35));
+  const isTimeCritical = secondsRemaining > 0 && secondsRemaining <= criticalThresholdSeconds;
+  const criticalMinutesLabel = Math.ceil(criticalThresholdSeconds / 60);
+
+  // Trigger synthesized audio alert chime once when entering critical time window
+  useEffect(() => {
+    if (isTimeCritical && !hasTriggeredChimeRef.current && typeof window !== 'undefined') {
+      hasTriggeredChimeRef.current = true;
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const audioCtx = new AudioCtx();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+          osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.15);
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.4);
+        }
+      } catch {}
+    }
+  }, [isTimeCritical]);
 
   // ---------------- STEP: ENTER ----------------
   if (step === 'ENTER') {
@@ -506,16 +543,21 @@ export default function StudentExamPage({ params }: { params: { accessCode: stri
             {/* Ambient Network Connectivity Pill */}
             <NetworkConnectivityPill isOnline={isOnline} pendingSyncCount={pendingSyncCount} />
 
-            {/* Live Countdown Timer */}
+            {/* Live Countdown Timer with Red Blinking Alert */}
             <div
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl font-mono font-bold text-xs sm:text-sm shadow-inner transition-colors ${
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl font-mono font-black text-xs sm:text-sm transition-all duration-300 ${
                 isTimeCritical
-                  ? 'bg-rose-600 text-white animate-pulse'
-                  : 'bg-slate-900 text-emerald-400'
+                  ? 'bg-red-600 text-white animate-pulse shadow-[0_0_22px_rgba(239,68,68,0.85)] ring-2 ring-red-400 border border-red-300'
+                  : 'bg-slate-900 text-emerald-400 shadow-inner'
               }`}
             >
-              <Clock className="w-4 h-4" />
+              <Clock className={`w-4 h-4 ${isTimeCritical ? 'animate-bounce text-yellow-300' : ''}`} />
               <span>{formatTimer(secondsRemaining)}</span>
+              {isTimeCritical && (
+                <span className="hidden sm:inline-block px-1.5 py-0.5 bg-black/40 text-yellow-300 rounded text-[10px] tracking-wider uppercase font-sans animate-pulse font-extrabold">
+                  Running out of time!
+                </span>
+              )}
             </div>
 
             <button
@@ -528,6 +570,36 @@ export default function StudentExamPage({ params }: { params: { accessCode: stri
             </button>
           </div>
         </header>
+
+        {/* Urgent Time Critical Alert Banner */}
+        {isTimeCritical && (
+          <div className="bg-red-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-black flex items-center justify-center space-x-2 animate-pulse shadow-lg z-20 border-b border-red-700">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-bounce text-yellow-300" />
+            <span>
+              CRITICAL TIME ALERT: You have less than {criticalMinutesLabel} minute{criticalMinutesLabel > 1 ? 's' : ''} remaining! Ensure all responses are locked in before automatic session submission.
+            </span>
+          </div>
+        )}
+
+        {/* AI Malpractice Warning Banner when looking away from screen */}
+        {aiAttentionStatus === 'LOOKING_AWAY' && (
+          <div className="bg-rose-600 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center space-x-2 animate-pulse shadow-md z-20 border-b border-rose-700">
+            <Eye className="w-4 h-4 flex-shrink-0 animate-bounce" />
+            <span>
+              MALPRACTICE WARNING: Looking away from your screen detected! Refocus on your assessment immediately to avoid examination cancellation.
+            </span>
+          </div>
+        )}
+
+        {/* AI Camera Warning Banner when no face detected */}
+        {aiAttentionStatus === 'NO_FACE' && (
+          <div className="bg-amber-600 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center space-x-2 animate-pulse shadow-md z-20 border-b border-amber-700">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-bounce" />
+            <span>
+              CAMERA WARNING: No face detected in proctor view. Please position yourself directly in front of your camera.
+            </span>
+          </div>
+        )}
 
         {/* Main Examination Body */}
         <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
@@ -760,12 +832,31 @@ export default function StudentExamPage({ params }: { params: { accessCode: stri
           </div>
         </div>
 
-        {/* Proctoring Corner Webcam Mirror (160x120px) */}
+        {/* Proctoring Corner Webcam Mirror (160x120px) with AI Vision Intelligence */}
         {examData?.requireCamera && (
           <WebcamMirror
             isActive={true}
             onError={(err) => {
               proctoringRef.current?.reportViolation('CAMERA_BLOCKED', err);
+            }}
+            onAttentionChange={(status) => {
+              setAiAttentionStatus(status);
+            }}
+            onAIViolation={async (v) => {
+              if (attemptData?.id) {
+                try {
+                  await fetch('/api/student/violation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      attemptId: attemptData.id,
+                      type: v.type,
+                      details: v.message,
+                      metadata: v.details,
+                    }),
+                  });
+                } catch {}
+              }
             }}
           />
         )}

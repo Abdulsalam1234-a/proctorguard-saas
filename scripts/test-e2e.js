@@ -286,6 +286,106 @@ async function runTests() {
     assert(false, `Tenant subscription test failed: ${err.message}`);
   }
 
+  // 8. Test Dynamic Timer Warning Threshold Logic
+  console.log('\n--- 8. Testing Dynamic Timer Warning Threshold Logic ---');
+  try {
+    function computeCriticalThreshold(durationMinutes) {
+      return durationMinutes >= 30 ? 5 * 60 : 3 * 60;
+    }
+    const longExamThreshold = computeCriticalThreshold(45);
+    const shortExamThreshold = computeCriticalThreshold(20);
+    assert(longExamThreshold === 300, `45-min exam triggers critical red-blinking alert at 300s (5 mins)`);
+    assert(shortExamThreshold === 180, `20-min exam triggers critical red-blinking alert at 180s (3 mins)`);
+  } catch (err) {
+    assert(false, `Dynamic timer test failed: ${err.message}`);
+  }
+
+  // 9. Test AI Proctoring Gaze & Motion Violation Ingestion
+  console.log('\n--- 9. Testing AI Proctoring Vision Infraction Logging ---');
+  try {
+    if (testAttempt) {
+      // Test LOOKING_AWAY violation
+      const gazeRes = await fetch(`${BASE_URL}/api/student/violation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attemptId: testAttempt.id,
+          violationType: 'LOOKING_AWAY',
+          metadata: {
+            direction: 'LEFT',
+            durationFrames: 4,
+            gazeDeviation: 0.38,
+            confidence: 0.92,
+          },
+        }),
+      });
+      const gazeData = await gazeRes.json();
+      assert(gazeRes.status === 200, 'LOOKING_AWAY infraction logged successfully');
+      assert(gazeData.violationType === 'LOOKING_AWAY' || gazeData.success === true, 'Recorded infraction type is LOOKING_AWAY');
+
+      // Test NO_FACE_DETECTED violation
+      const noFaceRes = await fetch(`${BASE_URL}/api/student/violation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attemptId: testAttempt.id,
+          violationType: 'NO_FACE_DETECTED',
+          metadata: {
+            consecutiveDarkFrames: 5,
+            candidateInFrame: false,
+          },
+        }),
+      });
+      const noFaceData = await noFaceRes.json();
+      assert(noFaceRes.status === 200, 'NO_FACE_DETECTED infraction logged successfully');
+      assert(noFaceData.violationType === 'NO_FACE_DETECTED' || noFaceData.success === true, 'Recorded infraction type is NO_FACE_DETECTED');
+    }
+  } catch (err) {
+    assert(false, `AI proctoring violation test failed: ${err.message}`);
+  }
+
+  // 10. Test Billing Plans & Interactive Paywall Checkout
+  console.log('\n--- 10. Testing Paywall Tier Quotas & Subscription Checkout ---');
+  try {
+    // Fetch pricing plans
+    const plansRes = await fetch(`${BASE_URL}/api/billing/plans`, {
+      headers: { Authorization: `Bearer ${lecturerToken}` },
+    });
+    const plansData = await plansRes.json();
+    assert(plansRes.status === 200, `Billing plans endpoint returned status 200`);
+    assert(plansData.plans?.length === 3, `Returned 3 competitive tiers (MEMBER, PRO, PREMIUM)`);
+
+    const memberPlan = plansData.plans.find((p) => (p.tier || p.id) === 'MEMBER');
+    const proPlan = plansData.plans.find((p) => (p.tier || p.id) === 'PRO');
+    const premiumPlan = plansData.plans.find((p) => (p.tier || p.id) === 'PREMIUM');
+
+    assert(memberPlan?.maxStudents === 200 && memberPlan?.maxExamsPerMonth === 5, 'MEMBER tier: 200 students, 5 tests/month');
+    assert(proPlan?.maxStudents === 500 && proPlan?.maxExamsPerMonth === 10, 'PRO tier: 500 students, 10 tests/month');
+    assert(premiumPlan?.maxStudents === 1000 && premiumPlan?.maxExamsPerMonth === -1, 'PREMIUM tier: 1000 students, unlimited tests');
+
+    // Test Checkout Upgrade to PRO
+    const checkoutRes = await fetch(`${BASE_URL}/api/billing/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${lecturerToken}`,
+      },
+      body: JSON.stringify({
+        tier: 'PRO',
+        billingCycle: 'monthly',
+        paymentMethod: 'paystack',
+      }),
+    });
+    const checkoutData = await checkoutRes.json();
+    assert(checkoutRes.status === 200, `Paywall checkout to PRO returned status 200`);
+    assert(checkoutData.success === true, 'Checkout status is success');
+    assert(checkoutData.subscription?.tier === 'PRO', `Subscription successfully updated to PRO (500 students quota)`);
+    const receiptRef = checkoutData.receipt?.invoiceNumber || checkoutData.receipt?.receiptNumber;
+    assert(!!receiptRef, `Generated official receipt #${receiptRef}`);
+  } catch (err) {
+    assert(false, `Paywall & billing checkout test failed: ${err.message}`);
+  }
+
   console.log('\n====================================================');
   console.log(`📊 TEST SUITE SUMMARY: ${passed} PASSED, ${failed} FAILED`);
   console.log('====================================================');

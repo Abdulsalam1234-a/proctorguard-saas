@@ -15,6 +15,8 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
+import { PaywallModal } from '@/components/billing/PaywallModal';
+import { SubscriptionTier } from '@/lib/types';
 
 function CreateExamContent() {
   const router = useRouter();
@@ -35,8 +37,23 @@ function CreateExamContent() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [showPaywall, setShowPaywall] = useState<boolean>(false);
+
+  const fetchSubscription = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        setSubscription(data.user?.subscription || null);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
+    fetchSubscription();
     async function fetchCourses() {
       try {
         const res = await fetch('/api/courses');
@@ -91,6 +108,9 @@ function CreateExamContent() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.quotaExceeded) {
+          setShowPaywall(true);
+        }
         throw new Error(data.error || 'Failed to create exam');
       }
 
@@ -102,6 +122,11 @@ function CreateExamContent() {
       setIsSubmitting(false);
     }
   };
+
+  const isQuotaExceeded =
+    subscription &&
+    subscription.maxExamsPerMonth !== -1 &&
+    subscription.currentExamCount >= subscription.maxExamsPerMonth;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -121,6 +146,33 @@ function CreateExamContent() {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+        {/* Quota Exceeded Alert Banner */}
+        {isQuotaExceeded && (
+          <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">
+                  Monthly Assessment Quota Reached ({subscription.currentExamCount} of {subscription.maxExamsPerMonth} tests used)
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Your current {subscription.tier} plan has reached its limit. Upgrade to Pro (10 tests) or Premium (Unlimited) to continue.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPaywall(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all flex items-center justify-center space-x-1.5 flex-shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Upgrade Plan</span>
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -353,6 +405,17 @@ function CreateExamContent() {
           </button>
         </div>
       </form>
+
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        currentTier={subscription?.tier}
+        onUpgraded={(newTier) => {
+          fetchSubscription();
+          setShowPaywall(false);
+          setError(null);
+        }}
+      />
     </div>
   );
 }
